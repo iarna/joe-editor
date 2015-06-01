@@ -1,0 +1,477 @@
+==============================================================================
+  How to write .jsf syntax highlighters for the joe editor
+  (c) 2012 Matthias S. Benkmann
+  License: http://creativecommons.org/licenses/by/3.0/deed.en_US
+==============================================================================
+
+
+This is a short tutorial on how to write syntax highlighting files for the joe
+editor. It will walk you through the creation of "go.jsf", a syntax highlighter for
+the Google Go language (see http://golang.org). 
+
+I'm writing this tutorial as I go along, so you'll see the evolution of the
+syntax highlighter. This means that not all code is in its final form
+when first presented. It also means that some of the color choices will be a
+bit odd and differ from the final version of "go.jsf".
+
+You should also read the comments at the start of the file "c.jsf" shipped with joe.
+You will find more information about the available options there.
+The files "jsf.jsf" and "jsf_check.jsf" demonstrate advanced usage of the call=...
+option.
+
+We start with the following 2 color definitions
+----------------------------
+=Idle
+=Error          red bold
+----------------------------
+
+Next we create 2 states. The syntax of a state is
+
+:statename Colorname
+  <characters_to_match>     <jump_target_state>    <options>
+  ...
+
+
+---------------------------------------------
+:main Idle
+  *             error     noeat
+  " \t"         main
+  "\n"          main
+
+:error Error
+  *             error
+  "\n"          main
+----------------------------------------------
+The above results in a syntax highlighter that marks everything that is not
+whitespace as an error. A newline in error state exits error state to state main.
+This avoids getting large blocks marked as error.
+
+Notes:
+ * The "noeat" option causes the character triggering the case to be looked at
+   again in the target state. It implies "recolor=-1", i.e. the character
+   triggering the jump will be recolored with the color of the jump's target state.
+   IOW, "noeat" makes sure that the 1st error character is already colored with
+   the Error color.
+
+Now we add support for the usual /* and // comments
+
+----------------------------------------------
+=Idle
+=Error		red bold
+=Comment        bold green            # new
+
+:main Idle
+  *             error     noeat
+  " \t"         main
+  "\n"          main
+  "/"           maybe_comment recolor=-1  # new
+
+:error Error
+  *             error
+  "\n"          main
+
+############## new #################
+:maybe_comment Comment
+  *             error     noeat recolor=-2
+  "/"           line_comment
+  "*"           block_comment
+
+:line_comment Comment
+  *             line_comment
+  "\n"          main
+
+:block_comment Comment  
+  *            block_comment
+  "*"          maybe_end_block_comment
+  
+:maybe_end_block_comment Comment
+  *            block_comment
+  "/"          main
+----------------------------------------------
+ATTENTION!
+We use "noeat recolor=-2" in the jump to the error state.
+It's important that we use both "noeat" and "recolor=-2". Imagine the case of
+a stray "/" at the end of a line followed immediately by newline. We need the
+error state to see the newline, so that it will properly reset to main. Otherwise
+the following line would still be in error state. The "noeat" prevents eating the
+"\n". "noeat" implies "recolor=-1" but that's not enough in this case, since it would
+just recolor "\n" with the Error color and that's not visible. "recolor=-2" makes
+sure that the "/" is also colored in the error color.
+This applies analogously to the other jumps to the error state in the rest of the
+code.
+
+While the above works okay, as implemented an error causes a comment to not be
+recognized which leads to unnecessary follow up errors. Therefore we add comments
+as an additional way out of the error state.
+
+-------------------------------------------
+:error Error
+  *             error
+  "\n"          main
+  "/"           maybe_comment_err  recolor=-1      # new
+
+########### new #############
+:maybe_comment_err Operator
+  *             error noeat recolor=-2
+  "/"           line_comment  recolor=-2
+  "*"           block_comment recolor=-2
+
+-------------------------------------------
+
+Next we add string literals and character literals. Go's language definition has
+the nice property that the number of digits for \x,\0,\u and \U is fixed.
+Note that we implement the escape sequences via a subroutine call. This
+allows us to use them from single and double quoted strings via a simple call.
+
+----------------------------------------------
+=SingleQuoted   cyan                      # new
+=DoubleQuoted   cyan                      # new
+=Escape         bold cyan                 # new
+
+:main Idle
+  *             error     noeat
+  " \t"         main
+  "\n"          main
+  "/"           maybe_comment recolor=-1
+  "'"           single_quoted recolor=-1  # new
+  "\""          double_quoted recolor=-1  # new
+
+############# new #################
+:single_quoted SingleQuoted
+  *            single_quoted
+  "'"          main
+  "\\"         single_quoted call=.escape() recolor=-1
+  "\n"         error
+
+:double_quoted DoubleQuoted
+  *            double_quoted
+  "'"          main
+  "\\"         double_quoted call=.escape() recolor=-1
+  "\n"         error
+
+.subr escape  # START OF SUBROUTINE "escape"
+:esc Escape   # initial state of subroutine escape
+  *              esc_err    noeat
+  "abfnrtv'\"" whatever return
+     # For some reason joe doesn't interpret \\ 
+     # properly if merged with the previous case. 
+     # So create a separate case for it.
+  "\\"         whatever return
+  "x"            hex2
+  "u"            hex4
+  "U"            hex8
+  "0-3"          oct2
+
+:hex8 Escape
+  *              esc_err noeat
+  "a-fA-F0-9"    hex7
+
+:hex7 Escape
+  *              esc_err    noeat
+  "a-fA-F0-9"    hex6
+
+:hex6 Escape
+  *              esc_err noeat
+  "a-fA-F0-9"    hex5
+
+:hex5 Escape
+  *              esc_err    noeat
+  "a-fA-F0-9"    hex4
+
+:hex4 Escape
+  *              esc_err noeat
+  "a-fA-F0-9"    hex3
+
+:hex3 Escape
+  *              esc_err    noeat
+  "a-fA-F0-9"    hex2
+
+:hex2 Escape
+  *              esc_err noeat
+  "a-fA-F0-9"    hex1
+
+:hex1 Escape
+  *              esc_err    noeat
+  "a-fA-F0-9"    whatever return
+
+:oct2 Escape
+  *              esc_err noeat
+  "0-7"          oct1
+
+:oct1 Escape
+  *              esc_err noeat
+  "0-7"          whatever return
+
+:esc_err Error
+  *              esc_err return
+  "\n"           esc_err_newline noeat recolor=-2
+
+:esc_err_newline Error
+  *              esc_err return noeat
+
+.end   # END OF SUBROUTINE "escape"
+
+--------------------------------------
+
+Notes:
+ * The error state within the escape subroutine is called esc_err to avoid
+   confusion with the global "error" state. It would be permissible to use
+   the name "error" instead. A subroutine has its own namespace for states.
+   In particular a subroutine cannot directly jump to global states. It must
+   use "return".
+ * The recolor/noeat handling of the subroutine is a bit special. If the offending
+   character is a newline (i.e. a backslash is immediately followed by a newline),
+   we recolor the backslash via a dummy state esc_err_newline and we do NOT consume
+   the newline. This is because newlines are usually special and the caller wants
+   to see them. If the offending character is not a newline, we color just that
+   character (which means we must eat it) and return.
+ * Newlines are not allowed in '...' and "..." in Go, so the single_quoted and
+   double_quoted jump to the error state if they encounter a newline. Note that
+   this jump must NOT have "noeat", because if the error state sees the newline
+   it will reset to the main state and we won't get anything marked as error.
+   Note also that the error will go unnoticed if the line following the illegal
+   newline is empty, because the error state will reset to main after its newline.
+   I consider this preferable to having large blocks of code turning red while
+   editing code.
+ * The state listed on the line containing the call=.escape() will be entered
+   when the subroutine returns. This implies that even if the subroutine returns
+   from an error state, it will always return back to the non-error state within
+   the respective type of string literal.
+   [ Don't bother trying to understand the following paragraph :-) ]
+   Sometimes it may be desirable for a subroutine to return to the caller whether
+   it was in an error state. The only way I can see of doing this is to use save_c,
+   save_s and buffer in creative ways. E.g. one could use save_c on the call=.escape()
+   lines and add another save_c and noeat to the return from esc_err. The caller 
+   could then use "strings" matching to check if the current character is "&" (i.e.
+   equal to the delimiter buffer) or not. Except for the case where the error occurs
+   at a backslash, this allows the caller to recognize an error return.
+ 
+
+Go has another type of strings: raw strings. These are very simple. They start and
+end with a backtick, may include newlines and support no escape sequences. This is
+very easy to implement in the syntax highlighter.
+
+----------------------------------------------
+=BackQuoted     cyan                     # new
+
+:main Idle
+  *             error     noeat
+  " \t"         main
+  "\n"          main
+  "/"           maybe_comment recolor=-1
+  "'"           single_quoted recolor=-1
+  "\""          double_quoted recolor=-1
+  "`"           back_quoted   recolor=-1 # new
+
+############### new ##################
+:back_quoted BackQuoted
+  *            back_quoted
+  "`"          main
+----------------------------------------------
+
+Next we add the operators and delimiters. We split them up into groups so that we
+may use different colors. I will give only one group's color and state here. 
+The others work the same way (except for ".", see later).
+
+---------------------------------------------------
+=Operator       bold cyan         # new
+
+:main Idle
+  *             error     noeat
+  " \t"         main
+  "\n"          main
+  "/"           maybe_comment recolor=-1
+  "'"           single_quoted recolor=-1
+  "\""          double_quoted recolor=-1
+  "`"           back_quoted   recolor=-1
+  "+&=!|*^<>:%-" operator     noeat        # new
+  "()"          parentheses   noeat        # new
+  "[]"          brackets      noeat        # new
+  "{}"          curlies       noeat        # new
+  ";"           semicolon     noeat        # new
+  "."           period                     # new
+  ","           comma         noeat        # new
+
+:operator Operator                         # new
+  *             main                       # new
+
+:maybe_comment Operator                    # changed color
+  *             main noeat                 # changed target and options
+  "/"           line_comment  recolor=-2
+  "*"           block_comment recolor=-2
+
+---------------------------------------------------
+
+Notes:
+ * The introduction of the "/" operator caused changes to :maybe_comment.
+ * The period "." is actually an interesting case because it can be both an operator
+   and part of a floating point literal. Note that in the code above the "."
+   does not have the "noeat" option. That's because we want to check the next
+   character to decide if we're dealing with a decimal point.
+
+-----------------------------------------------
+:period Period
+  *            period_other    noeat recolor=-2
+  "0-9"        period_decimal  noeat recolor=-2
+
+:period_other Period  
+  *            main noeat
+
+:period_decimal PeriodDecimal
+  *            float_no_period noeat
+-----------------------------------------------
+
+Next we add support for numeric literals. This is a bit tricky. Here are the states:
+
+---------------------------------------------------------------------
+:main Idle
+  [...]
+  "0"           number0       recolor=-1    # new
+  "1-9"         float         recolor=-1    # new
+
+############## new ######################
+
+:float_no_period Number
+  *            end_of_number   noeat
+  "0-9"        float_no_period
+  "eE"         integer
+
+:integer Number
+  *            error     noeat
+  "+-"         unsigned
+  "0-9"        unsigned_or_end
+
+:unsigned Number
+  *            error     noeat
+  "0-9"        unsigned_or_end
+
+:unsigned_or_end Number
+  *            end_of_number noeat
+  "0-9"        unsigned_or_end
+
+:end_of_number Number
+  *            main  noeat
+  "i"          main   # imaginary number suffix
+
+:number0 Number
+  *            end_of_number  noeat
+  "xX"         hex
+  "."          period_decimal recolor=-1
+    # 099i is a valid imaginary number, 099.0 is a valid float,
+    # but 099 is an invalid octal. 
+    # We don't check for this and simply lump both cases together.
+  "0-9"        float
+
+:hex Number
+  *            main  noeat
+  "0-9a-fA-F"  hex
+
+:float Number
+  *            end_of_number  noeat
+  "0-9"        float
+  "."          period_decimal recolor=-1
+  "eE"         integer
+  
+---------------------------------------------------------------------
+
+Now we have to deal with identifiers and keywords. As a modern language Go supports
+non-ASCII identifiers. This means that we cannot use good ol' [a-zA-Z0-9_] for 
+identifiers. What we do instead is we explicitly declare the as yet unhandled
+ASCII characters as errors and treat everything else as possible
+identifier character. That's not 100% correct, because
+there are many unicode characters in the non-ASCII range that are not legal in
+identifiers, but there's no real point in handling this.
+
+--------------------------------------------------------------
+:main Idle
+  *           keyword_or_identifier   noeat buffer   # changed
+  "#$@~"      error                   noeat          # new
+ [...]
+--------------------------------------------------------------
+
+The "buffer" option you see used above causes all encountered characters to be
+stored in an internal buffer, beginning with the character that triggered the case.
+This buffer is later used to check against a list of keywords.
+
+Now for the actual handling of keywords and identifiers. We distinguish between
+exported identifiers (that begin with a capital letter), unexported identifiers,
+language keywords, predefined types, predefined constants and builtin functions.
+
+-------------------------------------------------------------------
+=Identifier         fg_333
+=BuiltinFunction    bold
+=ExportedIdentifier fg_444
+=Keyword            bold
+=Type               bold
+=Constant           red
+
+####################### new ###############################
+:keyword_or_identifier Identifier
+  *            identifier
+  "A-Z"        exported_identifier recolor=-1
+  "a-z_"       keyword_or_identifier2
+
+:exported_identifier  ExportedIdentifier
+  *                         exported_identifier
+  "\x01-/:-@[-^`{-\x7f"      main noeat
+
+:identifier Identifier
+  *                         identifier
+  "\x01-/:-@[-^`{-\x7f"      main noeat
+
+:keyword_or_identifier2 Identifier
+  *                 identifier
+  "a-zA-Z_0-9"      keyword_or_identifier2
+  "\x01-/:-@[-^`{-\x7f"      main noeat hold strings
+      "_"           keyword
+      "break"       keyword
+      "default"     keyword
+      "func"        keyword
+      [...]
+      
+      "true"        constant
+      "false"       constant
+      "nil"         constant
+      
+      "byte"        type
+      "rune"        type
+      "int"         type
+      [...]
+      
+      "delete"      builtin
+      "make"        builtin
+      [...]
+  done
+
+:keyword Keyword
+  *            main  noeat
+
+:constant Constant
+  *            main  noeat
+
+:type Type
+  *            main  noeat
+  
+:builtin BuiltinFunction
+  *            main  noeat
+  
+-------------------------------------------------------------------
+
+Notes:
+ * "hold" stops the buffering started by "buffer". The current character, i.e.
+   the character that triggered the case "\x01-/:-@[-`{-\x7f", is NOT included 
+   in the buffer.
+ * The strings option compares the current buffer contents to the following list
+   of strings (terminated by the word "done") and if one of the words matches, the
+   corresponding jump is executed. If none of the words matches, the usual jump
+   for the respective case (here that's "main noeat") is executed.
+ * The "strings" command always recolors the matched buffer with the target state
+   if one of its jumps are taken. This means that even if you don't need a special
+   state after recognizing a word, you may have to introduce dummy states as shown
+   above or you will get the effect that your word has the proper color while 
+   you're typing it but changes color unexpectedly the moment you type a space 
+   after the word.
+
+
+That's it!
+
