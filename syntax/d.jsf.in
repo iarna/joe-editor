@@ -1,0 +1,518 @@
+# JOE syntax highlight file for D programming language
+
+# Written by olivergondza on github
+# https://gist.github.com/olivergondza/1032393
+
+=Idle
+=Bad		        bold red
+=Comment 	        green
+=Constant 	        cyan
+=Escape 	        bold cyan
+=Type 		        bold
+=Keyword 	        bold
+=Brace		        magenta
+=Xfix                   bold cyan
+=Control
+
+:first Idle
+	*		bad_call                noeat call=.d()
+
+:bad_call Bad
+        *               bad_call
+
+# D language
+.subr d
+
+:reset Idle
+        *               idle                    noeat
+        " \t\n"		reset
+
+:idle Idle
+	*		idle
+	"\n"		reset
+	"/"		slash
+	"0"		first_digit	        recolor=-1
+	"1-9"		decimal                 recolor=-1
+	"."		maybe_float
+	"\""		string		        recolor=-1
+	"`"             string_wysiwyg          recolor=-1
+	"'"		char		        recolor=-1
+	"a-zA-Z_"       maybe_ident             noeat
+	"\\"		outside_escape	        recolor=-1
+	"()[]"  	bracket                 noeat
+	"{}"            brace                   noeat recolor=-1
+	"*+"            close_comment           recolor=-1
+	",:;=><&|!~\-%^"	control         recolor=-1
+
+:outside_escape	Escape
+	*	        idle
+
+:brace Brace
+	"{"             idle                    call=.d(brace)
+.ifdef brace
+        "}"             bad_pairing             return
+.else
+        "}"             bad_pairing             recolor=-1
+.endif
+
+:bracket Idle
+        "["             idle                    call=.d(brackets)
+        "("             idle                    call=.d(parentheses)
+.ifdef brackets
+        "]"             bad_pairing             return recolor=-1
+.else
+        "]"             bad_pairing             recolor=-1
+.endif
+.ifdef parentheses
+        ")"             bad_pairing             return recolor=-1
+.else
+        ")"             bad_pairing             recolor=-1
+.endif
+
+:close_comment Bad
+        *               idle                    noeat recolor=-2
+        "/"             bad_pairing
+
+:bad_pairing Bad
+        *               bad_pairing
+
+:control Control
+	*	        idle	                noeat
+
+:slash Idle
+	*		idle		        noeat recolor=-2 # Not sure about this
+	"*"		comment		        recolor=-2
+	"+"             idle                    recolor=-2 call=.nested_comment()
+	"/"		line_comment	        recolor=-2
+
+:line_comment Comment
+	*		line_comment
+	"\n"		reset
+
+:comment Comment
+	*		comment
+	"*"		maybe_end_comment
+
+:maybe_end_comment Comment
+	*		comment
+	"/"		idle
+	"*"		maybe_end_comment
+
+:first_digit Constant
+	*		idle	                noeat
+	"xX"		hex
+	"bB"            binary
+	"."		float
+	"eE"		epart
+	"0-7"		octal
+	"89"		bad_number	        recolor=-1
+
+:bad_number Bad
+	*		idle	                noeat
+	"0-9"		bad_number
+
+:binary Constant
+        *               idle                    noeat
+        "01_"           binary
+
+:octal Constant
+	*		idle	                noeat
+	"0-7"		octal
+	"89"		bad_number	        recolor=-1
+
+:hex Constant
+	*		idle	                noeat
+	"0-9A-Fa-f_"	hex
+	"."             hex_float
+	"pP"            hex_epart
+	"uU"            decimal_suffix_l        recolor=-1
+	"L"             decimal_suffix_u        recolor=-1
+	"i"             imag_suffix             recolor=-1
+
+:decimal Constant
+	*		idle	                noeat
+	"0-9_"		decimal
+	"eE"		epart
+	"."		float
+	"uU"            decimal_suffix_l        recolor=-1
+	"L"             decimal_suffix_u        recolor=-1
+	"i"             imag_suffix             recolor=-1
+
+:decimal_suffix_l Xfix
+        *               idle                    noeat
+        "uU"            decimal_suffix_bad      recolor=-2
+        "L"             idle
+
+:decimal_suffix_u Xfix
+        *               idle                    noeat
+        "L"             decimal_suffix_bad      recolor=-2
+        "uU"            idle
+
+:decimal_suffix_bad Bad
+        *               idle                    noeat
+        "LuU"           decimal_suffix_bad
+
+:maybe_float Constant
+	*		idle	                recolor=-2	noeat
+	"0-9"		float		        recolor=-2
+	# .. specifies range
+	"."             idle                    recolor=-2
+
+:imag_suffix Xfix
+        *               idle                    noeat
+        "LfFi"          floating_suffix_bad     recolor=-2
+
+:float_suffix Xfix
+        *               idle                    noeat
+        "i"             imag_suffix             recolor=-1
+        "LfF"           floating_suffix_bad     recolor=-2
+        
+:real_suffix Xfix
+        *               idle                    noeat
+        "i"             imag_suffix             recolor=-1
+        "LfF"           floating_suffix_bad     recolor=-2
+
+:floating_suffix_bad Bad
+        *               idle
+        "LfFi"          floating_suffix_bad
+
+:hex_float Constant
+        *               idle                    noeat
+        "pP"            hex_epart
+        "0-9a-fA-F_"    hex_float
+        "i"             imag_suffix             recolor=-1
+        "L"             real_suffix             recolor=-1
+     
+:hex_epart Constant
+        *               idle                    noeat
+        "0-9a-fA-F+\-_" hex_enum
+
+:hex_enum Constant
+        *               idle                    noeat
+        "0-9a-fA-F_"    hex_enum
+        "i"             imag_suffix             recolor=-1
+        "L"             real_suffix             recolor=-1
+
+:float Constant
+	*		idle	                noeat
+	"eE"		epart
+	"0-9_"		float
+	"i"             imag_suffix             recolor=-1
+        "fF"            float_suffix            recolor=-1
+        "L"             real_suffix             recolor=-1
+        # .. specifies range
+        "."             idle                    recolor=-2
+
+:epart Constant
+	*		idle	                noeat
+	"0-9+\-_"	enum
+
+:enum Constant
+	*		idle	                noeat
+	"0-9_"		enum
+	"i"             imag_suffix
+        "fF"            float_suffix            recolor=-1
+        "L"             real_suffix             recolor=-1
+
+:string_wysiwyg Constant
+        *               string_wysiwyg
+        "`"             idle
+        
+:string_wysiwyg_prefixed Constant
+        *               string_wysiwyg_prefixed
+        "\""            idle
+
+:maybe_prefixed_wysiwyg Xfix
+        *               ident                   noeat recolor=-2
+        "\""            string_wysiwyg_prefixed recolor=-1
+
+:maybe_prefixed_hex Xfix
+        *               ident                   noeat recolor=-2
+        "\""            string_hex_odd          recolor=-1
+
+:string_hex_odd Constant
+        *               string_hex_even_bad     noeat
+        "0-9a-fA-F"     string_hex_even
+        " \n\t"         string_hex_odd
+        "\""            idle
+
+:string_hex_even Constant
+        *               string_hex_odd_bad      noeat
+        "0-9a-fA-F"     string_hex_odd
+        " \n\t"         string_hex_even
+        "\""            string_hex_few          noeat
+
+:string_hex_few Bad
+        *               idle
+
+:string_hex_odd_bad Bad
+        *               string_hex_even_bad
+        "0-9a-fA-F"     string_hex_even         noeat
+        "\""            idle
+
+:string_hex_even_bad Bad
+        *               string_hex_odd_bad
+        "0-9a-fA-F"     string_hex_odd          noeat
+        "\""            string_hex_few          noeat
+        
+:string	Constant
+	*		string
+	"\""		string_posible_postfix
+	"\\"		string_escape	        recolor=-1
+	"%"		string_control	        recolor=-1
+
+:string_posible_postfix Xfix
+        *               idle                    noeat
+        "c"             idle
+        "w"             idle
+        "d"             idle
+
+:delimited_or_token Xfix
+        *               ident                   noeat recolor=-2
+        "\""            string_delimited        recolor=-1
+        "{"             string_token            noeat recolor=-1
+
+:string_delimited Constant
+        *               string_delimited
+        "\""            idle
+
+:string_token Constant
+        *               idle                    noeat call=.d()
+
+:string_escape Escape
+	*		string
+	"x"		string_hex1
+	"0-7"		string_octal2
+	"\n"		string		        recolor=-2
+
+:string_hex1 Escape
+	*		string		        noeat
+	"0-9a-fA-F"	string_hex2
+
+:string_hex2 Escape
+	*		string		        noeat
+	"0-9a-fA-F"	string
+
+:string_octal2 Escape
+	*		string		        noeat
+	"0-7"		string_octal3
+
+:string_octal3 Escape
+	*		string		        noeat
+	"0-7"		string
+
+:string_control Escape
+	*		string
+	"\""		string noeat
+	"\n"		reset
+	"0-9.\-+ #hjILtz$"	string_control
+
+:char Constant
+	*		char
+	"\n"		reset
+	"'"		idle
+	"\\"		char_escape	        recolor=-1
+
+:char_escape	Escape
+	*		char
+	"x"		char_hex1
+	"0-7"		char_octal2
+	"\n"		char		        recolor=-2
+
+:char_hex1 Escape
+	*		char		        noeat
+	"0-9a-fA-F"	char_hex2
+
+:char_hex2 Escape
+	*		char		        noeat
+	"0-9a-fA-F"	char
+
+:char_octal2 Escape
+	*		char		        noeat
+	"0-7"		char_octal3
+
+:char_octal3 Escape
+	*		char		        noeat
+	"0-7"		char
+
+:maybe_ident Idle
+        *               ident                   buffer
+        "r"             maybe_prefixed_wysiwyg  buffer recolor=-1
+        "x"             maybe_prefixed_hex      buffer recolor=-1
+        "q"             delimited_or_token      buffer recolor=-1
+
+:ident Idle
+	*		idle		        noeat strings
+
+	"void"		type
+
+	"bool"		type
+	
+	"auto"		type
+
+	"byte"          type
+	"ubyte"         type
+	"short"		type
+	"ushort"        type
+	"int"		type
+	"uint"          type
+	"long"		type
+	"ulong"         type
+	"cent"          type
+	"ucent"         type
+	
+        "float"		type
+	"double"	type
+	"real"          type
+	
+	"ifloat"	type
+	"idouble"	type
+	"ireal"         type
+	"cfloat"	type
+	"cdouble"	type
+	"creal"         type
+
+	"char"		type
+	"wchar"         type
+	"dchar"         type
+	
+	"string"        type
+	"wstring"       type
+	"dstring"       type
+
+        "abstract"      kw
+        "alias"         kw
+        "align"         kw
+	"asm"		kw
+        "assert"        kw
+        
+        "body"          kw
+	"break"		kw
+	
+	"case"		kw
+        "cast"          kw
+	"catch"		kw
+	"class"		kw
+	"const"         kw
+	"continue"	kw
+        
+        "debug"         kw
+	"default"	kw
+        "delegate"      kw
+	"delete"	kw
+        "deprecated"    kw
+        "do"		kw
+        
+	"else"		kw
+	"enum"		kw
+	"export"        kw
+        "extern"        kw
+
+	"false"		kw
+        "final"         kw
+	"finally"       kw
+	"foreach"       kw
+        "foreach_reverse"       kw
+	"for"		kw
+        "function"      kw
+        
+	"goto"		kw
+        
+	"if"		kw
+        "immutable"     kw
+	"import"        kw
+        "in"            kw
+        "inout"         kw
+        "interface"     kw
+        "invariant"     kw
+        "is"            kw
+        
+        "lazy"          kw
+        
+        "macro"         kw
+        "mixin"         kw
+        "module"        kw
+        
+	"new"		kw
+        "nothrow"       kw
+	"null"          kw
+
+        "out"           kw
+        "override"      kw
+
+        "package"       kw
+	"pragma"        kw
+	"private"	kw
+	"protected"	kw
+	"public"	kw
+        "pure"          kw
+        
+        "ref"           kw
+	"return"	kw
+	
+        "scope"         kw
+        "shared"        kw
+        "static"        kw
+	"struct"	kw
+	"super"         kw
+	"switch"	kw
+        "synchronized"  kw
+        
+	"template"	kw
+	"this"		kw
+	"throw"		kw
+	"true"		kw
+	"try"		kw
+        "typedef"       kw
+        "typeid"        kw
+	"typeof"	kw
+	
+	"union"		kw
+        "unittest"      kw
+        
+        "version"       kw
+        "volatile"      kw
+
+	"while"		kw
+        "with"          kw
+        
+        "__gshared"     kw
+        "__thread"      kw
+        "__traits"      kw
+
+        "__FILE__"      kw
+        "__LINE__"      kw
+        "__EOF__"       kw
+
+        "__TIMESTAMP__" kw
+        "__DATE__"      kw
+        "__TIME__"      kw
+
+        "__VENDOR__"    kw
+        "__VERSION__"   kw
+done
+	"a-zA-Z0-9_"	ident
+
+:type Type
+	*	        idle	                noeat
+
+:kw Keyword
+	*	        idle                    noeat
+.end
+
+.subr nested_comment
+
+:nested_comment Comment
+        *               nested_comment
+        "/"             nested_slash
+        "+"             maybe_end_nested_comment
+
+:nested_slash Comment
+        *               nested_comment
+        "+"             nested_comment          call=.nested_comment()
+        
+:maybe_end_nested_comment Comment
+        *               nested_comment
+        "/"             nested_comment          return
+        "+"             maybe_end_nested_comment
+.end

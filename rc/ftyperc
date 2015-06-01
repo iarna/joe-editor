@@ -461,6 +461,19 @@
 -text_delimiters #if|#ifdef|#ifndef=#elif=#else=#endif
 -cpara >#!;*/%
 
+ D language file
+*.c
+-autoindent
+-syntax d
+-highlighter_context
+-smarthome
+-smartbacks
+-purify
+-single_quoted
+-c_comment
+-cpp_comment
+-cpara >#!;*/%
+
  Verilog file
 *.v
 -autoindent
